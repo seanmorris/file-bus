@@ -1,0 +1,39 @@
+{
+    "name": "file-bus",
+    "displayName": "%displayName%",
+    "description": "%description%",
+    "version": "0.0.1",
+    "publisher": "Sean Morris",
+    "license": "Apache-2.0",
+    "engines": {
+      "vscode": "*"
+    },
+    "scripts": {
+        "compile": "npx babel index.js --out-dir dist/"
+    },
+    "activationEvents": [
+        "onFileSystem:busfs",
+        "onStartupFinished"
+    ],
+    "browser": "dist/index",
+    "main": "dist/index",
+    "commands": [
+        {
+            "command": "busfs.init",
+            "title": "%command%.init",
+            "category": "BusFS"
+        },
+        {
+            "command": "busfs.addFile",
+            "title": "%command%.addFile",
+            "category": "BusFS"
+        }
+    ],
+    "capabilities": {
+        "virtualWorkspaces": true,
+        "untrustedWorkspaces":
+        {
+            "supported": true
+        }
+    }
+}
