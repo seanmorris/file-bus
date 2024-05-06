@@ -44,15 +44,9 @@ class FileBus
 
 	stat({mid, path})
 	{
-		console.log('STAT', {mid, path});
-
 		if(path === '/')
 		{
-			const dir = new Directory(path);
-
-			console.log(dir);
-
-			return dir;
+			return new Directory(path);
 		}
 
 		if(!this.files.has(path))
@@ -63,10 +57,8 @@ class FileBus
 		return this.files.get(path);
 	}
 
-	readFile({mid, external, path})
+	readFile({path})
 	{
-		console.log('READFILE', {mid, external, path});
-
 		if(!this.files.has(path))
 		{
 			throw vscode.FileSystemError.FileNotFound(path);
@@ -77,8 +69,6 @@ class FileBus
 
 	writeFile({path, scheme}, content, {create, overwrite, unlock, atomic})
 	{
-		// console.log('WRITE', {path, scheme}, content, {create, overwrite, unlock, atomic});
-
 		if(this.files.has(path))
 		{
 			const file = this.files.get(path);
@@ -94,10 +84,8 @@ class FileBus
 		this.files.set(path, new File(path, content));
 	}
 
-	readDirectory({mid, fsPath, external, path})
+	readDirectory({path})
 	{
-		console.log('READDIR', {mid, fsPath, external, path});
-
 		const entries = [];
 
 		if(path === '/')
@@ -113,8 +101,6 @@ class FileBus
 		{
 			throw vscode.FileSystemError.FileNotADirectory(path);
 		}
-
-		console.log(entries);
 
 		return entries;
 	}
@@ -163,34 +149,11 @@ class FileBus
 }
 
 export function activate(context) {
-
-	console.log('FileBus says "Hi!"');
-
-	const fileBus = new FileBus;
-
 	context.subscriptions.push(vscode.workspace.registerFileSystemProvider(
-		'busfs'
-		, fileBus
-		, { isCaseSensitive: true }
+		'busfs', new FileBus, { isCaseSensitive: true }
 	));
 
 	vscode.workspace.updateWorkspaceFolders(
-		0
-		, 0
-		, { uri: vscode.Uri.parse('busfs:/'), name: "BusFS - Sample" }
-	)
-	context.subscriptions.push(vscode.commands.registerCommand('busfs.init', _ => {
-	}));
-
-	context.subscriptions.push(vscode.commands.registerCommand('busfs.addFile', _ => {
-		new Blob(['foo']).arrayBuffer().then(buffer => {
-			fileBus.writeFile(
-				vscode.Uri.parse(`busfs:/file.txt`)
-				, buffer
-				, { create: true, overwrite: true }
-			);
-		});
-	}));
-
-
+		0, 0, { uri: vscode.Uri.parse('busfs:/'), name: "BusFS - Sample" }
+	);
 }
