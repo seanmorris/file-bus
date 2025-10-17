@@ -106,12 +106,17 @@ config => {
 
     const client = new Client(window.parent ?? window.opener, callbackOrigin);
     const server = new Server({
-
-        console: line => console.log(line)
-
+        executeCommand: (command, ...args) => {
+            console.log(command, args);
+            if(window.vscode)
+            {
+                console.log(window.vscode);
+            }
+        },
     }, callbackOrigin);
 
     window.addEventListener('message', onMessage);
+    window.addEventListener('message', event => server.handleMessageEvent(event));
 
     config.commands.push(
         {
