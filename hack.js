@@ -23,7 +23,7 @@ config => {
         const token  = crypto.randomUUID();
         const result = new Promise((_accept, _reject) => [accept, reject] = [_accept, _reject]);
 
-        console.log(action, params);
+        // console.log(action, params);
 
         incomplete.set(token, [accept, reject]);
 
@@ -106,12 +106,15 @@ config => {
 
     const client = new Client(window.parent ?? window.opener, callbackOrigin);
     const server = new Server({
+        openFile: (path) => {
+            window.vscodeEditor.env.openUri('busfs://' + path);
+        },
         executeCommand: (command, ...args) => {
-            console.log(command, args);
-            if(window.vscode)
+            if(!window.vscodeEditor)
             {
-                console.log(window.vscode);
+                return;
             }
+            window.vscodeEditor.commands.executeCommand(command, ...args);
         },
     }, callbackOrigin);
 
@@ -122,13 +125,6 @@ config => {
         {
             id: "fileBus.call",
             handler: (method, ...args) => client[method](...args)
-        },
-        {
-            id: "fileBus.test",
-            label: "fileBus.test",
-            handler: () => {
-                console.log(require('vscode'));
-            }
         }
     );
 }
