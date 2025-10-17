@@ -6,14 +6,34 @@
     "publisher": "Sean Morris",
     "license": "Apache-2.0",
     "engines": {
-      "vscode": "*"
+        "vscode": "*"
     },
     "scripts": {
         "compile": "npx babel index.js --out-dir dist/"
     },
+    "hacks": [
+        "hack.js"
+    ],
     "activationEvents": [
         "*"
     ],
     "browser": "dist/index",
-    "main": "dist/index"
+    "main": "dist/index",
+    "enabledApiProposals": [
+        "fileSearchProvider"
+    ],
+    "devDependencies": {
+        "@babel/cli": "^7.24.8"
+    },
+    "contributes": {
+        "commands": [
+            {
+                "command": "fileBus.console",
+                "title": "fileBus.console"
+            }
+        ]
+    },
+    "dependencies": {
+        "@babel/plugin-transform-modules-commonjs": "^7.25.7"
+    }
 }

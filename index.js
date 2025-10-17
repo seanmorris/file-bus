@@ -17,7 +17,7 @@ class File extends Entry
 	constructor(name, data = new Uint8Array([]))
 	{
 		super(name);
-		this.size = 0;
+		this.size = data.length;
 		this.type = vscode.FileType.File;
 		this.data = data;
 	}
@@ -34,6 +34,37 @@ class Directory extends Entry
 	}
 }
 
+const getFiles = async (path) => {
+	if(path === '/proc')
+	{
+		return [];
+	}
+
+	const names = await vscode.commands.executeCommand('fileBus.call', 'readdir', path);
+
+	return (await Promise.all(
+		names
+		.filter(name => !(['.','..'].includes(name)))
+		.map(async name => {
+			const p = path + (path[path.length - 1] === '/' ? '' : '/');
+			const filepath = p + name;
+			const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', filepath);
+			if(about.object.isFolder)
+			{
+				return getFiles(filepath);
+			}
+			else
+			{
+				return filepath;
+			}
+		})
+	)).flat();
+};
+
+const convertSimple2RegExpPattern = pattern => pattern
+	.replace(/[\-\\\{\}\+\?\|\^\$\.\,\[\]\(\)\#\s]/g, '\\$&')
+	.replace(/[\*]/g, '.*');
+
 class FileBus
 {
 	emitter = new vscode.EventEmitter;
@@ -42,118 +73,182 @@ class FileBus
 
 	files = new Map;
 
-	stat({mid, path})
+	async stat({mid, path})
 	{
 		if(path === '/')
 		{
 			return new Directory(path);
 		}
 
-		if(!this.files.has(path))
+		const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', path);
+
+		if(!about.exists)
 		{
 			throw vscode.FileSystemError.FileNotFound(path);
 		}
 
-		return this.files.get(path);
+		if(about.object.isFolder)
+		{
+			return new Directory(path);
+		}
+
+		return new File(path);
 	}
 
-	readFile({path})
+	async readFile({path})
 	{
-		if(!this.files.has(path))
+		const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', path);
+
+		if(!about.exists)
 		{
 			throw vscode.FileSystemError.FileNotFound(path);
 		}
 
-		return this.files.get(path).data;
+		const content = new Uint8Array(await vscode.commands.executeCommand('fileBus.call', 'readFile', path));
+
+		return content;
 	}
 
-	writeFile({path, scheme}, content, {create, overwrite, unlock, atomic})
+	async writeFile({path, scheme}, content, {create, overwrite, unlock, atomic})
 	{
-		if(this.files.has(path))
+		const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', path);
+
+		if(about.exists && about.object.isFolder)
 		{
-			const file = this.files.get(path);
-
-			if(file.type === vscode.FileType.Directory)
-			{
-				throw vscode.FileSystemError.FileIsADirectory(path);
-			}
-
-			file.data = content;
+			throw vscode.FileSystemError.FileIsADirectory(path);
 		}
 
-		this.files.set(path, new File(path, content));
+		await vscode.commands.executeCommand('fileBus.call', 'writeFile', path, Array.from(content));
 	}
 
-	readDirectory({path})
+	async readDirectory({path})
 	{
-		const entries = [];
+		const names = await vscode.commands.executeCommand('fileBus.call', 'readdir', path);
 
-		if(path === '/')
+		return await Promise.all(
+			names.filter(name => !(['.','..'].includes(name)))
+			.map(async name => {
+				const p = path + (path[path.length - 1] === '/' ? '' : '/');
+				const filepath = p + name;
+				const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', filepath);
+				return [name, about.object.isFolder ? vscode.FileType.Directory : vscode.FileType.File];
+			})
+		);
+	}
+
+	async rename({path: fromPath, scheme: fromScheme}, {path: toPath, scheme: toScheme}, {overwrite})
+	{
+		const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', fromPath);
+
+		if(!about.exists)
 		{
-			for(let i = 0; i < 10; i++)
-			{
-				this.files.set(`/File_${i}.txt`, new File(`/File_${i}.txt`));
+			throw vscode.FileSystemError.FileNotFound(path);
+		}
 
-				entries.push([`busfs:/File_${i}.txt`, vscode.FileType.File]);
-			}
+		await vscode.commands.executeCommand('fileBus.call', 'rename', fromPath, toPath);
+	}
+
+	async delete({path}, {recursive, useTrash, atomic})
+	{
+		const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', path);
+
+		if(!about.exists)
+		{
+			throw vscode.FileSystemError.FileNotFound(path);
+		}
+
+		if(about.object.isFolder)
+		{
+			await vscode.commands.executeCommand('fileBus.call', 'rmdir', path);
 		}
 		else
 		{
-			throw vscode.FileSystemError.FileNotADirectory(path);
+			await vscode.commands.executeCommand('fileBus.call', 'unlink', path);
 		}
-
-		return entries;
 	}
 
-	rename({path: fromPath, scheme: fromScheme}, {path: toPath, scheme: toScheme}, {overwrite})
+	async createDirectory({path})
 	{
-		if(!this.files.has(fromPath))
-		{
-			throw vscode.FileSystemError.FileNotFound(fromPath);
-		}
+		const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', path);
 
-		if(this.files.has(toPath) && !overwrite)
-		{
-			throw vscode.FileSystemError.FileExists(toPath);
-		}
-
-		this.files.set(toPath, this.files.get(fromPath));
-		this.files.delete(fromPath);
-	}
-
-	delete({path}, {recursive, useTrash, atomic})
-	{
-		if(!this.files.has(path))
-		{
-			throw vscode.FileSystemError.FileNotFound(path);
-		}
-
-		this.files.delete(path);
-	}
-
-	createDirectory({path})
-	{
-		if(this.files.has(path))
+		if(about.exists)
 		{
 			throw vscode.FileSystemError.FileExists(path);
 		}
 
-		this.files.set(path, new Directory(path));
+		await vscode.commands.executeCommand('fileBus.call', 'mkdir', path);
 	}
 
 	watch({mid, external, path ,scheme}, {recursive, exclude})
 	{
-		// ignore, fires for all changes...
 		return new vscode.Disposable(() => {});
+	}
+
+	async provideFileSearchResults(query, options, token)
+	{
+		const filepaths = await getFiles('/');
+
+		const results = [];
+
+		const pattern = query.pattern
+			? new RegExp(convertSimple2RegExpPattern(query.pattern), "i")
+			: null;
+
+		for (const path of filepaths)
+		{
+			if(!pattern || pattern.exec(path))
+			{
+				results.push({path});
+			}
+		}
+
+		return results;
 	}
 }
 
-export function activate(context) {
-	context.subscriptions.push(vscode.workspace.registerFileSystemProvider(
-		'busfs', new FileBus, { isCaseSensitive: true }
-	));
+export function activate(context)
+{
+	const fileBus = new FileBus;
 
-	vscode.workspace.updateWorkspaceFolders(
-		0, 0, { uri: vscode.Uri.parse('busfs:/'), name: "BusFS - Sample" }
+	context.subscriptions.push(
+		vscode.workspace.registerFileSystemProvider('busfs', fileBus, {isCaseSensitive: true}),
+		vscode.workspace.registerFileSearchProvider('busfs', fileBus),
 	);
+
+	vscode.workspace.updateWorkspaceFolders(0, 0, { uri: vscode.Uri.parse('busfs:/'), name: "BusFS" });
+
+	let terminal;
+
+	const writeEmitter = new vscode.EventEmitter();
+	const lineBuffer   = [];
+
+	const printBuffer = () => {
+		lineBuffer.forEach(line => writeEmitter.fire(line + '\r\n'));
+		lineBuffer.length = 0;
+	}
+
+	const pty = {
+		onDidWrite:  writeEmitter.event,
+		handleInput: () => void 0, // NOOP
+		open:        printBuffer,
+		close:       () => terminal = null, // NOOP
+	};
+
+	vscode.commands.registerCommand('fileBus.console', line => {
+		lineBuffer.push(line);
+
+		if(!terminal)
+		{
+			terminal = vscode.window.createTerminal({name: "FileBus Console", pty, isTransient: true});
+		}
+		else
+		{
+			printBuffer()
+		}
+
+		terminal.show();
+	});
+
+	// vscode.commands.executeCommand('fileBus.console', 'Initialize!');
+	vscode.commands.executeCommand('fileBus.call', 'activate');
 }
