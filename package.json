@@ -9,7 +9,9 @@
         "vscode": "*"
     },
     "scripts": {
-        "compile": "npx babel index.js --out-dir dist/"
+        "build:index": "npx babel index.js --out-dir dist/",
+        "build:hack": "node build-hack.mjs",
+        "compile": "npm run build:index && npm run build:hack"
     },
     "hacks": [
         "hack.js"
@@ -23,7 +25,8 @@
         "fileSearchProvider"
     ],
     "devDependencies": {
-        "@babel/cli": "^7.24.8"
+        "@babel/cli": "^7.24.8",
+        "esbuild": "^0.28.0"
     },
     "contributes": {
         "commands": [
@@ -34,6 +37,7 @@
         ]
     },
     "dependencies": {
-        "@babel/plugin-transform-modules-commonjs": "^7.25.7"
+        "@babel/plugin-transform-modules-commonjs": "^7.25.7",
+        "quickbus": "^1.0.0"
     }
 }
