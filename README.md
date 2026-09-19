@@ -136,7 +136,7 @@ await editorClient.executeCommand('workbench.action.quickOpen');
 
 The important part is the shape of the file system methods. `file-bus` expects to call:
 
-- `readdir(path) -> string[]`
+- `readdir(path, options?) -> string[] | Array<{name: string, isFolder: boolean}>` (or a promise of either)
 - `readFile(path) -> Promise<number[]> | number[]`
 - `analyzePath(path) -> { exists: boolean, object?: { isFolder?: boolean } }`
 - `writeFile(path, bytes) -> void`
@@ -145,6 +145,18 @@ The important part is the shape of the file system methods. `file-bus` expects t
 - `unlink(path) -> void`
 - `rmdir(path) -> void`
 - `activate() -> void`
+
+For directory expansion and recursive file search, File Bus passes `{withFileTypes: true}`
+to `readdir`. Hosts can return serializable `{name, isFolder}` entries in a single
+response, avoiding an `analyzePath` round trip per entry. Hosts that ignore the
+option and return strings keep working through the existing metadata calls.
+Both formats preserve listing order; `.` and `..` are filtered out. Filesystem
+errors propagate without retrying the request as a legacy listing. Results are
+not cached. A host should resolve mutation calls only after its persistence work
+finishes, because File Bus emits change events after that acknowledgment.
+
+Run `npm test` to build both artifacts and check directory expansion, recursive
+search, legacy compatibility, error propagation, and write acknowledgments.
 
 ## License
 

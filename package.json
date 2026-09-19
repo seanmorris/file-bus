@@ -11,7 +11,8 @@
     "scripts": {
         "build:index": "npx babel index.js --out-dir dist/",
         "build:hack": "node build-hack.mjs",
-        "compile": "npm run build:index && npm run build:hack"
+        "compile": "npm run build:index && npm run build:hack",
+        "test": "npm run compile && node --test tests/*.test.cjs"
     },
     "hacks": [
         "hack.js"

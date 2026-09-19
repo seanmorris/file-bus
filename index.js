@@ -34,22 +34,64 @@ class Directory extends Entry
 	}
 }
 
-const getFiles = async (path) => {
+/**
+ * Read names and types together, retaining support for hosts that return names.
+ * @param {string} path Directory path on the host filesystem.
+ * @returns {Promise<Array<{name: string, isFolder: boolean}>>} Entries excluding dot entries.
+ */
+const readDirectoryEntries = async path => {
+	const entries = await vscode.commands.executeCommand('fileBus.call', 'readdir', path, {withFileTypes: true});
+	const prefix = path.endsWith('/') ? path : path + '/';
+
+	if(!Array.isArray(entries))
+	{
+		throw new TypeError('Invalid directory listing returned by the filesystem host.');
+	}
+
+	const resolutions = entries
+		.filter(entry => {
+			if(typeof entry !== 'string' && (typeof entry?.name !== 'string' || typeof entry?.isFolder !== 'boolean'))
+			{
+				throw new TypeError('Invalid directory entry returned by the filesystem host.');
+			}
+
+			return !['.', '..'].includes(typeof entry === 'string' ? entry : entry.name);
+		})
+		.map(async entry => {
+			if(typeof entry !== 'string')
+			{
+				return {name: entry.name, isFolder: entry.isFolder};
+			}
+
+			const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', prefix + entry);
+			if(!about?.exists)
+			{
+				throw vscode.FileSystemError.FileNotFound(prefix + entry);
+			}
+			return {name: entry, isFolder: !!about.object.isFolder};
+		});
+
+	return Promise.all(resolutions);
+};
+
+/**
+ * Walk searchable directories using one typed listing per directory when supported.
+ * @param {string} path Directory path on the host filesystem.
+ * @returns {Promise<string[]>} Descendant file paths.
+ */
+const getFiles = async path => {
 	if(path === '/proc')
 	{
 		return [];
 	}
 
-	const names = await vscode.commands.executeCommand('fileBus.call', 'readdir', path);
+	const entries = await readDirectoryEntries(path);
 
 	return (await Promise.all(
-		names
-		.filter(name => !(['.','..'].includes(name)))
-		.map(async name => {
+		entries.map(async ({name, isFolder}) => {
 			const p = path + (path[path.length - 1] === '/' ? '' : '/');
 			const filepath = p + name;
-			const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', filepath);
-			if(about.object.isFolder)
+			if(isFolder)
 			{
 				return getFiles(filepath);
 			}
@@ -268,19 +310,15 @@ class FileBus
 		});
 	}
 
+	/**
+	 * List host entries using VS Code's directory tuple format.
+	 * @param {{path: string}} uri Directory URI.
+	 * @returns {Promise<Array<[string, number]>>} Names paired with VS Code file types.
+	 */
 	async readDirectory({path})
 	{
-		const names = await vscode.commands.executeCommand('fileBus.call', 'readdir', path);
-
-		return await Promise.all(
-			names.filter(name => !(['.','..'].includes(name)))
-			.map(async name => {
-				const p = path + (path[path.length - 1] === '/' ? '' : '/');
-				const filepath = p + name;
-				const about = await vscode.commands.executeCommand('fileBus.call', 'analyzePath', filepath);
-				return [name, about.object.isFolder ? vscode.FileType.Directory : vscode.FileType.File];
-			})
-		);
+		const entries = await readDirectoryEntries(path);
+		return entries.map(({name, isFolder}) => [name, isFolder ? vscode.FileType.Directory : vscode.FileType.File]);
 	}
 
 	async rename({path: fromPath, scheme: fromScheme}, {path: toPath, scheme: toScheme}, {overwrite})
