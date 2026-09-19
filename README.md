@@ -17,7 +17,7 @@ There are two runtime pieces:
 
 - [index.js](./index.js)
   The VS Code extension entrypoint. This registers the `busfs:` provider and issues `fileBus.call` commands for file operations.
-- [hack.js](./hack.js)
+- `hack.js`
   The browser-side injected hack that wires the page and the embedded VS Code instance together using `quickbus`.
 
 The hack is generated from:
@@ -36,14 +36,15 @@ The important packaging constraint is:
 - keep `dist/index.js` as the extension browser entrypoint
 - keep `hack.js` as a single self-contained injected script
 
-The generated `hack.js` is intentionally checked in as a build artifact because the extension loader expects a concrete top-level hack file.
+`dist/` and `hack.js` are generated and ignored by Git. Build both before staging
+the extension: the loader requires those concrete files in the served directory.
 
 ## Build
 
 Install dependencies and build both artifacts:
 
 ```bash
-npm install
+npm ci
 npm run compile
 ```
 
@@ -51,6 +52,13 @@ That produces:
 
 - `dist/index.js` via Babel from `index.js`
 - `hack.js` via esbuild from `hack-source.js`
+
+When using a checkout at `vscode-web-static/extra_extensions/file-bus`, run
+`make all` at the host root after compilation. Make copies the extension into
+`public/extensions/file-bus` and regenerates the host page, including its injected
+hack. `make extensions` only stages extension files; it does not compile this
+repository or regenerate the host page. Publishing the rebuilt host is a
+separate step; updating the embedding app alone does not update File Bus.
 
 ## Dependencies
 
@@ -90,8 +98,9 @@ const iframe = document.querySelector('iframe');
 const innerOrigin = new URL(iframe.src, window.location.href).origin;
 
 const fileSystemServer = new Server({
-  readdir(path) {
-    return ['example.txt'];
+  readdir(path, options = {}) {
+    const entries = [{name: 'example.txt', isFolder: false}];
+    return options.withFileTypes ? entries : entries.map(entry => entry.name);
   },
   async readFile(path) {
     return Array.from(new TextEncoder().encode('hello from host'));
@@ -154,6 +163,13 @@ Both formats preserve listing order; `.` and `..` are filtered out. Filesystem
 errors propagate without retrying the request as a legacy listing. Results are
 not cached. A host should resolve mutation calls only after its persistence work
 finishes, because File Bus emits change events after that acknowledgment.
+
+Forward the options argument through every host adapter. For example, a
+`php-wasm` host should use `readdir: (path, options) => php.readdir(path, options)`.
+`vscode-react` 0.2.2 already forwards these arguments. Entry objects are plain
+data, not Node.js `Dirent` instances; the host determines how links are classified.
+With PHP's typed listings, types follow links and metadata failures reject the
+request. File Bus preserves its existing `/proc` exclusion during recursive search.
 
 Run `npm test` to build both artifacts and check directory expansion, recursive
 search, legacy compatibility, error propagation, and write acknowledgments.
